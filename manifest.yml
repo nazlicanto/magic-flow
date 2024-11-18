@@ -1,0 +1,26 @@
+modules:
+  jira:adminPage:
+    - key: wf-hello-world-admin-page
+      resource: main
+      resolver:
+        function: resolver
+      title: WorkflowGPT
+  function:
+    - key: resolver
+      handler: index.handler
+      timeout: 60000
+resources:
+  - key: main
+    path: static/hello-world/build
+permissions:
+  scopes:
+    - 'read:jira-work'
+    - 'write:jira-work'
+  external:
+    fetch:
+      backend:
+        - api.anthropic.com
+app:
+  runtime:
+    name: nodejs20.x
+  id: ari:cloud:ecosystem::app/f5dc4b40-25e2-4e1e-be60-e687953ee4cf
