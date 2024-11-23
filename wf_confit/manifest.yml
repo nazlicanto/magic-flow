@@ -15,12 +15,12 @@ resources:
     path: static/hello-world/build
 permissions:
   scopes:
-    - 'write:confluence-content'      
-    - 'read:confluence-content.all'   
-    - 'read:confluence-space.summary' 
-    - 'write:confluence-space'       
-    - 'read:confluence-props'         
-    - 'write:confluence-props'      
+    - 'write:confluence-content'      # This one is correct
+    - 'read:confluence-content.all'   # Change from read:confluence-content
+    - 'read:confluence-space.summary' # Change from read:confluence-space
+    - 'write:confluence-space'        # This one is correct
+    - 'read:confluence-props'         # This one is correct
+    - 'write:confluence-props'        # Add this one
   content:
     styles:
       - 'unsafe-inline'

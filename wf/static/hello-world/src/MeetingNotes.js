@@ -1,6 +1,137 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@forge/bridge';
 
+// FileUploader component
+const FileUploader = ({ onTranscriptLoad }) => {
+    const [error, setError] = useState('');
+    const [isDragging, setIsDragging] = useState(false);
+    const [fileName, setFileName] = useState('');
+
+    const handleFile = async (file) => {
+        setError('');
+        
+        if (!file.name.toLowerCase().endsWith('.txt')) {
+            setError('Please upload a .txt file only');
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            setError('File size should be less than 5MB');
+            return;
+        }
+
+        try {
+            const text = await file.text();
+            setFileName(file.name);
+            onTranscriptLoad(text);
+        } catch (err) {
+            setError('Failed to read file. Please try again.');
+            console.error('File reading error:', err);
+        }
+    };
+
+    const onDragOver = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const onDragLeave = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+    };
+
+    const onDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file);
+    };
+
+    const onFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (file) handleFile(file);
+    };
+
+    return (
+        <div style={{ marginBottom: '20px' }}>
+            <div
+                style={{
+                    border: `2px dashed ${isDragging ? '#0052CC' : '#DFE1E6'}`,
+                    borderRadius: '3px',
+                    padding: '32px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    backgroundColor: isDragging ? '#F4F5F7' : 'white',
+                    transition: 'all 0.2s ease'
+                }}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+                onClick={() => document.getElementById('file-input').click()}
+            >
+                <input
+                    id="file-input"
+                    type="file"
+                    accept=".txt"
+                    style={{ display: 'none' }}
+                    onChange={onFileSelect}
+                />
+                
+                <div>
+                    {fileName ? (
+                        <p style={{ color: '#42526E' }}>Loaded: {fileName}</p>
+                    ) : (
+                        <>
+                            <p style={{ 
+                                color: '#172B4D',
+                                fontSize: '16px',
+                                fontWeight: '500',
+                                marginBottom: '8px'
+                            }}>
+                                Drop your transcript file here
+                            </p>
+                            <p style={{ color: '#42526E', fontSize: '14px' }}>
+                                or click to browse
+                            </p>
+                            <p style={{ 
+                                color: '#6B778C',
+                                fontSize: '12px',
+                                marginTop: '4px'
+                            }}>
+                                .txt files only, up to 5MB
+                            </p>
+                        </>
+                    )}
+                </div>
+            </div>
+
+            {error && (
+                <div style={{
+                    marginTop: '8px',
+                    padding: '12px',
+                    backgroundColor: '#FFEBE6',
+                    color: '#DE350B',
+                    borderRadius: '3px'
+                }}>
+                    {error}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const getTabStyle = (isActive) => ({
+    padding: '8px 16px',
+    border: 'none',
+    background: 'none',
+    cursor: 'pointer',
+    color: isActive ? '#0052CC' : '#42526E',
+    fontWeight: '500',
+    borderBottom: `2px solid ${isActive ? '#0052CC' : 'transparent'}`,
+    marginBottom: '-2px'
+});
+
+
 function MeetingNotes() {
     const [transcript, setTranscript] = useState('');
     const [spaceKey, setSpaceKey] = useState('magicflow');
@@ -8,6 +139,8 @@ function MeetingNotes() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [generatedTasks, setGeneratedTasks] = useState(null);
     const [error, setError] = useState(null);
+    const [activeTab, setActiveTab] = useState('paste'); // For tracking active tab
+
 
     // Add this useEffect to fetch spaces when component mounts
     useEffect(() => {
@@ -65,33 +198,62 @@ function MeetingNotes() {
         }
     };
 
-    const handleProcess = async () => {
+        // Add these new handler functions in your MeetingNotes component
+    const handleJiraProcess = async () => {
         setIsProcessing(true);
         setError(null);
         try {
-            console.log('Processing transcript with space key:', spaceKey); 
-            const result = await invoke('processMeetingTranscript', { 
-                transcript,
-                spaceKey 
+            console.log('Processing Jira tasks with transcript'); 
+            const result = await invoke('generateTasks', { 
+                description: transcript
             });
-            console.log('Received result:', result); 
+            console.log('Received Jira result:', result); 
             
             if (result.error) {
                 throw new Error(result.message);
             }
-
-            if (result.confluenceError) {
-                console.error('Confluence error:', result.confluenceError);
-                setError(`Jira tasks created but Confluence page creation failed: ${result.confluenceError}`);
-            }
             
-            setGeneratedTasks(result);
+            setGeneratedTasks({
+                generated: result.generated,
+                created: result.created
+            });
         } catch (error) {
             console.error('Error:', error);
             setError(error.message);
         } finally {
             setIsProcessing(false);
         }
+    };
+
+    const handleConfluenceProcess = async () => {
+        setIsProcessing(true);
+        setError(null);
+        try {
+            console.log('Creating Confluence summary with space key:', spaceKey); 
+            const result = await invoke('createConfluenceSummary', { 
+                transcript,
+                spaceKey 
+            });
+            console.log('Received Confluence result:', result); 
+            
+            if (result.error) {
+                throw new Error(result.message);
+            }
+            
+            setGeneratedTasks({
+                confluencePage: result
+            });
+        } catch (error) {
+            console.error('Error:', error);
+            setError(error.message);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+
+    const handleFileUpload = (text) => {
+        setTranscript(text);
     };
 
     return (
@@ -104,7 +266,7 @@ function MeetingNotes() {
             }}>
                 Meeting Notes Processor
             </h1>
-            
+
             {/* Debug button for checking issue types */}
             <button
                 onClick={checkIssueTypes}
@@ -121,49 +283,84 @@ function MeetingNotes() {
             >
                 Check Issue Types
             </button>
-            
-            {/* Confluence Space Key Input */}
-            <div style={{ marginBottom: '20px' }}>
-                <div style={{ marginBottom: '10px', color: '#172B4D' }}>
-                    Confluence Space Key:
-                </div>
-                <input
-                    value={spaceKey}
-                    onChange={(e) => setSpaceKey(e.target.value)}
-                    style={{
-                        width: '100%',
-                        padding: '8px',
-                        borderRadius: '3px',
-                        border: '2px solid #DFE1E6',
-                        marginBottom: '10px'
-                    }}
-                    placeholder="Enter Confluence space key..."
-                />
-            </div>
 
+
+            <SpaceKeyInput />
+
+            {/* Simple Tab Implementation */}
             <div style={{ marginBottom: '20px' }}>
-                <div style={{ marginBottom: '10px', color: '#172B4D' }}>
-                    Paste your meeting transcript:
+                <div style={{
+                    borderBottom: '2px solid #DFE1E6',
+                    marginBottom: '20px',
+                    display: 'flex',
+                    gap: '8px'
+                }}>
+                    <button
+                        onClick={() => setActiveTab('paste')}
+                        style={{
+                            padding: '8px 16px',
+                            border: 'none',
+                            background: 'none',
+                            cursor: 'pointer',
+                            color: activeTab === 'paste' ? '#0052CC' : '#42526E',
+                            fontWeight: '500',
+                            borderBottom: `2px solid ${activeTab === 'paste' ? '#0052CC' : 'transparent'}`,
+                            marginBottom: '-2px'
+                        }}
+                    >
+                        Paste Text
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('upload')}
+                        style={{
+                            padding: '8px 16px',
+                            border: 'none',
+                            background: 'none',
+                            cursor: 'pointer',
+                            color: activeTab === 'upload' ? '#0052CC' : '#42526E',
+                            fontWeight: '500',
+                            borderBottom: `2px solid ${activeTab === 'upload' ? '#0052CC' : 'transparent'}`,
+                            marginBottom: '-2px'
+                        }}
+                    >
+                        Upload File
+                    </button>
                 </div>
-                <textarea
-                    value={transcript}
-                    onChange={(e) => setTranscript(e.target.value)}
-                    style={{
-                        width: '100%',
-                        minHeight: '300px',
-                        padding: '12px',
-                        borderRadius: '3px',
-                        border: '2px solid #DFE1E6',
-                        marginBottom: '10px',
-                        fontSize: '14px',
-                        lineHeight: '1.5',
-                        fontFamily: 'monospace',
-                        resize: 'vertical'
-                    }}
-                    placeholder="Paste your meeting transcript here..."
-                />
+
+                {activeTab === 'paste' && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <textarea
+                            value={transcript}
+                            onChange={(e) => setTranscript(e.target.value)}
+                            style={{
+                                width: '100%',
+                                minHeight: '300px',
+                                padding: '12px',
+                                borderRadius: '3px',
+                                border: '2px solid #DFE1E6',
+                                marginBottom: '10px',
+                                fontSize: '14px',
+                                lineHeight: '1.5',
+                                fontFamily: 'monospace',
+                                resize: 'vertical'
+                            }}
+                            placeholder="Paste your meeting transcript here..."
+                        />
+                    </div>
+                )}
+
+                {activeTab === 'upload' && (
+                    <FileUploader onTranscriptLoad={handleFileUpload} />
+                )}
+            </div>
+            {/* Add the new buttons here instead */}
+            <div style={{ 
+                display: 'flex', 
+                gap: '12px',
+                marginBottom: '20px' 
+            }}>
                 <button
-                    onClick={handleProcess}
+                    onClick={handleJiraProcess}
                     disabled={isProcessing || !transcript.trim()}
                     style={{
                         backgroundColor: isProcessing ? '#0052CC80' : '#0052CC',
@@ -177,9 +374,29 @@ function MeetingNotes() {
                         transition: 'background-color 0.2s ease'
                     }}
                 >
-                    {isProcessing ? 'Processing...' : 'Process Transcript'}
+                    {isProcessing ? 'Processing...' : 'Create Jira Issues'}
+                </button>
+
+                <button
+                    onClick={handleConfluenceProcess}
+                    disabled={isProcessing || !transcript.trim() || !spaceKey}
+                    style={{
+                        backgroundColor: isProcessing ? '#00875A80' : '#00875A',
+                        color: 'white',
+                        padding: '8px 16px',
+                        borderRadius: '3px',
+                        border: 'none',
+                        cursor: (isProcessing || !transcript.trim() || !spaceKey) ? 'not-allowed' : 'pointer',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        transition: 'background-color 0.2s ease'
+                    }}
+                >
+                    {isProcessing ? 'Processing...' : 'Create Confluence Summary'}
                 </button>
             </div>
+
+
 
             {error && (
                 <div style={{

@@ -3,7 +3,7 @@ import Resolver from '@forge/resolver';
 import fetch from 'node-fetch';
 import api, { route } from '@forge/api';
 
-
+// Near the top of your file
 const CONFLUENCE_APP_ID = 'ari:cloud:ecosystem::app/c67f4945-8cbf-477c-afec-e93d5f96a9de';
 const resolver = new Resolver();
 
@@ -72,7 +72,7 @@ async function callClaudeAPI(prompt, maxRetries = 3, delay = 2000) {
                 }
             }
 
-            // For non-JSON responses 
+            // For non-JSON responses (like meeting summaries)
             return text;
 
         } catch (error) {
@@ -105,7 +105,7 @@ async function createJiraIssue(summary, description, parentKey = null, assignee 
                 ]
             },
             project: {
-                key: "DP"  // project key
+                key: "DP"  // Your project key
             },
             issuetype: {
                 id: "10001"  // Task type ID
@@ -214,6 +214,7 @@ async function createAllJiraTasks(tasks) {
 
 
 async function createConfluencePage(title, content, spaceKey) {
+    // ADD THESE LINES AT THE START:
     if (!spaceKey) {
         throw new Error('Space key is required');
     }
@@ -224,7 +225,7 @@ async function createConfluencePage(title, content, spaceKey) {
     console.log('Attempting to create page in space:', spaceKey);
     
     // Added timeout handling
-    const timeoutMs = 30000; 
+    const timeoutMs = 30000; // 30 seconds
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -336,6 +337,9 @@ resolver.define('generateTasks', async ({ payload }) => {
         };
     }
 });
+
+
+
 
 
 // Meeting transcript processor
@@ -456,6 +460,102 @@ resolver.define('processMeetingTranscript', async ({ payload }) => {
         };
     }
 });
+
+
+resolver.define('getConfluenceSpaces', async () => {
+    try {
+        const response = await api.asUser().requestConfluence(
+            route`/wiki/rest/api/space`,
+            {
+                headers: {
+                    'Accept': 'application/json'
+                },
+                query: {
+                    limit: 100,  // Adjust this number based on your needs
+                    status: 'current'
+                }
+            }
+        );
+
+        if (!response.ok) {
+            const error = await response.json();
+            console.error('Failed to fetch spaces:', error);
+            throw new Error(`Failed to fetch spaces: ${JSON.stringify(error)}`);
+        }
+
+        const data = await response.json();
+        
+        // Transform the response to match what the frontend expects
+        return {
+            spaces: data.results.map(space => ({
+                key: space.key,
+                name: space.name
+            }))
+        };
+    } catch (error) {
+        console.error('Error fetching Confluence spaces:', error);
+        throw error;
+    }
+});
+
+// Add this resolver alongside your other resolvers in wf/src/index.js
+
+resolver.define('createConfluenceSummary', async ({ payload }) => {
+    try {
+        const { transcript, spaceKey } = payload;
+        if (!transcript || !spaceKey) {
+            throw new Error('Missing required parameters: transcript and spaceKey');
+        }
+
+        // Generate meeting summary
+        const summaryPrompt = `
+            Create a detailed meeting summary:
+            ${transcript}
+
+            Format in Confluence markup:
+            h1. Meeting Summary
+            {date}
+            
+            h2. Attendees
+            {list of attendees}
+
+            h2. Discussion Points
+            {bullet points of main topics}
+
+            h2. Decisions
+            {numbered list of decisions}
+
+            h2. Action Items
+            {list of key action items}`;
+
+        const summaryResponse = await callClaudeAPI(summaryPrompt);
+
+        if (typeof summaryResponse !== 'string') {
+            throw new Error('Invalid meeting summary format');
+        }
+
+        // Create Confluence page
+        const pageTitle = `Meeting Summary - ${new Date().toLocaleDateString()}`;
+        try {
+            const confluencePage = await createConfluencePage(
+                pageTitle,
+                summaryResponse,
+                spaceKey
+            );
+            return confluencePage;
+        } catch (confluenceError) {
+            console.error('Confluence page creation error:', confluenceError);
+            throw new Error(`Failed to create Confluence page: ${confluenceError.message}`);
+        }
+    } catch (error) {
+        console.error('Process meeting transcript error:', error);
+        return {
+            error: true,
+            message: error.message
+        };
+    }
+});
+
 
 resolver.define('testConfluencePage', async ({ payload }) => {
     try {

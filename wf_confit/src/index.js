@@ -89,7 +89,7 @@ async function createConfluencePage(title, content, spaceKey) {
                     body: {
                         storage: {
                             value: content,
-                            representation: "storage"  // previouslyy "wiki"
+                            representation: "storage"  // Changed from "wiki"
                         }
                     },
                     status: "current"
