@@ -1,0 +1,35 @@
+modules:
+  jira:adminPage:
+    - key: wf-hello-world-admin-page
+      resource: main
+      resolver:
+        function: resolver
+      title: WorkflowGPT
+  function:
+    - key: resolver
+      handler: index.handler
+      timeout: 60000
+resources:
+  - key: main
+    path: static/hello-world/build
+permissions:
+  scopes:
+    - 'read:jira-work'
+    - 'write:jira-work'
+    - 'write:confluence-content'
+    - 'read:confluence-content.all'
+    - 'read:confluence-space.summary'  # Add this line
+    - 'write:confluence-space'
+    - 'read:confluence-props'
+    - 'write:confluence-props'
+  content:
+    styles:
+      - 'unsafe-inline'
+  external:
+    fetch:
+      backend:
+        - api.anthropic.com
+app:
+  runtime:
+    name: nodejs20.x
+  id: ari:cloud:ecosystem::app/c67f4945-8cbf-477c-afec-e93d5f96a9de
