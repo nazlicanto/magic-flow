@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@forge/bridge';
 import TaskPreviewEdit from './components/TaskPreviewEdit';
+import ConfluencePreviewEdit from './components/ConfluencePreviewEdit';
 
 
 // FileUploader component
@@ -144,6 +145,8 @@ function MeetingNotes() {
     const [activeTab, setActiveTab] = useState('paste'); // For tracking active tab
     const [previewTasks, setPreviewTasks] = useState(null);
     const [isPreviewMode, setIsPreviewMode] = useState(false);
+    const [confluencePreview, setConfluencePreview] = useState(null); // Add this state
+
 
 
     // Add this useEffect to fetch spaces when component mounts
@@ -271,26 +274,46 @@ function MeetingNotes() {
         setIsProcessing(true);
         setError(null);
         try {
-            console.log('Creating Confluence summary with space key:', spaceKey); 
-            const result = await invoke('createConfluenceSummary', { 
+            const preview = await invoke('previewConfluencePage', { 
                 transcript,
                 spaceKey 
             });
-            console.log('Received Confluence result:', result); 
             
-            if (result.error) {
-                throw new Error(result.message);
+            if (preview.error) {
+                throw new Error(preview.message);
             }
             
-            setGeneratedTasks({
-                confluencePage: result
-            });
+            setConfluencePreview(preview.preview);
         } catch (error) {
             console.error('Error:', error);
             setError(error.message);
         } finally {
             setIsProcessing(false);
         }
+    };
+
+    const handleConfluenceConfirm = async (title, content) => { // Add this handler
+        setIsProcessing(true);
+        try {
+            const result = await invoke('createConfluencePageWithTitle', {
+                title,
+                content,
+                spaceKey
+            });
+            
+            setGeneratedTasks({
+                confluencePage: result.page
+            });
+            setConfluencePreview(null);
+        } catch (error) {
+            setError(error.message);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleConfluenceCancel = () => { // Add this handler
+        setConfluencePreview(null);
     };
 
 
@@ -444,6 +467,14 @@ function MeetingNotes() {
                     onUpdate={handlePreviewUpdate}
                     onConfirm={handlePreviewConfirm}
                     onCancel={handlePreviewCancel}
+                />
+            )}
+            {confluencePreview && (
+                <ConfluencePreviewEdit
+                    preview={confluencePreview}
+                    onConfirm={handleConfluenceConfirm}
+                    onCancel={handleConfluenceCancel}
+                    isProcessing={isProcessing}
                 />
             )}
 

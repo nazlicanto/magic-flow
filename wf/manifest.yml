@@ -17,6 +17,7 @@ permissions:
     - 'read:jira-work'
     - 'write:jira-work'
     - 'write:confluence-content'
+    - read:confluence-content.summary
     - 'read:confluence-content.all'
     - 'read:confluence-space.summary'  # Add this line
     - 'write:confluence-space'

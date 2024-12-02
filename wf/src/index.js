@@ -180,29 +180,34 @@ async function createAllJiraTasks(tasks) {
             
             console.log('Created main task with key:', parentKey);
 
-            createdIssues.push({
+            const createdTask = {
                 key: parentKey,
                 title: task.title,
                 assignee: task.assignee,
                 subtasks: []
-            });
+            };
 
-            for (const subtask of task.subtasks) {
-                console.log('Creating subtask:', subtask.title, 'for parent:', parentKey);
-                const subtaskKey = await createJiraIssue(
-                    subtask.title,
-                    subtask.description,
-                    parentKey,
-                    subtask.assignee
-                );
-                console.log('Created subtask with key:', subtaskKey);
-                
-                createdIssues[createdIssues.length - 1].subtasks.push({
-                    key: subtaskKey,
-                    title: subtask.title,
-                    assignee: subtask.assignee
-                });
+            // Check if task has subtasks and they are iterable
+            if (task.subtasks && Array.isArray(task.subtasks)) {
+                for (const subtask of task.subtasks) {
+                    console.log('Creating subtask:', subtask.title, 'for parent:', parentKey);
+                    const subtaskKey = await createJiraIssue(
+                        subtask.title,
+                        subtask.description,
+                        parentKey,
+                        subtask.assignee
+                    );
+                    console.log('Created subtask with key:', subtaskKey);
+                    
+                    createdTask.subtasks.push({
+                        key: subtaskKey,
+                        title: subtask.title,
+                        assignee: subtask.assignee
+                    });
+                }
             }
+
+            createdIssues.push(createdTask);
         }
 
         return createdIssues;
@@ -211,7 +216,6 @@ async function createAllJiraTasks(tasks) {
         throw error;
     }
 }
-
 
 async function createConfluencePage(title, content, spaceKey) {
     // ADD THESE LINES AT THE START:
@@ -251,6 +255,10 @@ async function createConfluencePage(title, content, spaceKey) {
             throw new Error(`Cannot access space ${spaceKey}: ${JSON.stringify(spaceData)}`);
         }
 
+        // Generate a unique title with a single timestamp if needed
+        const timestamp = new Date().toISOString().split('.')[0].replace(/[:.]/g, '-');
+        const uniqueTitle = `${title} (${timestamp})`;
+
         // Create the page
         const response = await api.asUser().requestConfluence(
             route`/wiki/rest/api/content`,
@@ -266,14 +274,15 @@ async function createConfluencePage(title, content, spaceKey) {
                     space: {
                         key: spaceKey
                     },
-                    title: title,
+                    title: uniqueTitle,
                     body: {
                         storage: {
                             value: content,
                             representation: "storage"
                         }
                     },
-                    status: "current"
+                    status: "current",
+                    ancestors: []
                 })
             }
         );
@@ -321,7 +330,18 @@ resolver.define('generateTasks', async ({ payload }) => {
             }`;
 
         const aiResponse = await callClaudeAPI(prompt);
-        const parsedTasks = JSON.parse(aiResponse);
+        let parsedTasks = JSON.parse(aiResponse);
+
+        // Ensure proper structure
+        if (!parsedTasks.tasks) {
+            parsedTasks.tasks = [];
+        }
+
+        // Ensure each task has a subtasks array
+        parsedTasks.tasks = parsedTasks.tasks.map(task => ({
+            ...task,
+            subtasks: Array.isArray(task.subtasks) ? task.subtasks : []
+        }));
 
         const createdIssues = await createAllJiraTasks(parsedTasks.tasks);
         
@@ -337,8 +357,6 @@ resolver.define('generateTasks', async ({ payload }) => {
         };
     }
 });
-
-
 
 
 
@@ -425,9 +443,22 @@ resolver.define('processMeetingTranscript', async ({ payload }) => {
         }
  
         // Create Confluence page
-        const pageTitle = `Meeting Summary - ${parsedTasks.metadata.meetingDate || new Date().toLocaleDateString()}`;
 
-        
+        const extractProjectTitle = (transcript) => {
+            const firstLine = transcript.split('\n')[0];
+            const projectName = firstLine.replace('# ', '').trim();
+            return projectName || 'Meeting Summary';
+        };
+
+        const extractDate = (transcript) => {
+            const dateMatch = transcript.match(/\*\*Date\*\*:\s*([^\n]+)/);
+            return dateMatch ? dateMatch[1].trim() : new Date().toLocaleDateString();
+        };
+
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const pageTitle = `${extractProjectTitle(transcript)} - ${extractDate(transcript)} (${timestamp})`;
+
         try {
             // Use the createConfluencePage function we already have
             const confluencePage = await createConfluencePage(
@@ -556,6 +587,93 @@ resolver.define('createConfluenceSummary', async ({ payload }) => {
     }
 });
 
+// Add this new resolver in your index.js
+resolver.define('previewConfluencePage', async ({ payload }) => {
+    try {
+        const { transcript, spaceKey } = payload;
+        if (!transcript || !spaceKey) {
+            throw new Error('Missing required parameters: transcript and spaceKey');
+        }
+
+        // Generate meeting summary
+        const summaryPrompt = `
+            Create a detailed meeting summary:
+            ${transcript}
+ 
+            Format in Confluence markup:
+            h1. Meeting Summary
+            {date}
+            
+            h2. Attendees
+            {list of attendees}
+ 
+            h2. Discussion Points
+            {bullet points of main topics}
+ 
+            h2. Decisions
+            {numbered list of decisions}
+ 
+            h2. Action Items
+            {list of key action items}`;
+
+        const summaryResponse = await callClaudeAPI(summaryPrompt);
+
+        // Extract title information
+        const extractProjectTitle = (transcript) => {
+            const firstLine = transcript.split('\n')[0];
+            const projectName = firstLine.replace('# ', '').trim();
+            return projectName || 'Meeting Summary';
+        };
+
+        const extractDate = (transcript) => {
+            const dateMatch = transcript.match(/\*\*Date\*\*:\s*([^\n]+)/);
+            return dateMatch ? dateMatch[1].trim() : new Date().toLocaleDateString();
+        };
+
+        const suggestedTitle = `${extractProjectTitle(transcript)} - ${extractDate(transcript)}`;
+
+        return {
+            success: true,
+            preview: {
+                suggestedTitle,
+                content: summaryResponse,
+                spaceKey
+            }
+        };
+    } catch (error) {
+        console.error('Preview generation error:', error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+});
+
+// Also add this resolver for creating the page with a custom title
+resolver.define('createConfluencePageWithTitle', async ({ payload }) => {
+    try {
+        const { title, content, spaceKey } = payload;
+        if (!title || !content || !spaceKey) {
+            throw new Error('Missing required parameters');
+        }
+
+        const timestamp = new Date().toISOString().split('.')[0].replace(/[:.]/g, '-');
+        const uniqueTitle = `${title} (${timestamp})`;
+
+        const page = await createConfluencePage(uniqueTitle, content, spaceKey);
+
+        return {
+            success: true,
+            page
+        };
+    } catch (error) {
+        console.error('Page creation error:', error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+});
 
 resolver.define('testConfluencePage', async ({ payload }) => {
     try {
