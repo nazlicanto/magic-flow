@@ -1,6 +1,6 @@
 {
-  "name": "jira-admin-page-custom-ui",
-  "version": "1.0.54",
+  "name": "confluence-global-page-custom-ui",
+  "version": "1.0.53",
   "main": "index.js",
   "license": "MIT",
   "private": true,
@@ -9,8 +9,6 @@
     "eslint-plugin-react-hooks": "^4.6.0"
   },
   "dependencies": {
-    "@forge/resolver": "1.6.1",
-    "@radix-ui/react-tabs": "^1.1.1",
-    "node-fetch": "^3.3.2"
+    "@forge/resolver": "1.6.1"
   }
 }

@@ -1,0 +1,34 @@
+modules:
+  confluence:globalPage:
+    - key: meeting-summary-page
+      resource: main
+      resolver:
+        function: resolver
+      title: Meeting Summary Generator
+      route: meeting-summary
+  function:
+    - key: resolver
+      handler: index.handler
+      timeout: 60000
+resources:
+  - key: main
+    path: static/hello-world/build
+permissions:
+  scopes:
+    - 'write:confluence-content'      # This one is correct
+    - 'read:confluence-content.all'   # Change from read:confluence-content
+    - 'read:confluence-space.summary' # Change from read:confluence-space
+    - 'write:confluence-space'        # This one is correct
+    - 'read:confluence-props'         # This one is correct
+    - 'write:confluence-props'        # Add this one
+  content:
+    styles:
+      - 'unsafe-inline'
+  external:
+    fetch:
+      backend:
+        - api.anthropic.com
+app:
+  runtime:
+    name: nodejs20.x
+  id: ari:cloud:ecosystem::app/c67f4945-8cbf-477c-afec-e93d5f96a9de
